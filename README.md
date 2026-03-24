@@ -7,8 +7,10 @@ The Threshold-Based Dynamic Ensemble (TBDE) is an AutoML architecture that "audi
 ```
 ├── R/
 │   └── build_coalition.R          # Core ensemble logic
+├── data/
+│   └── train.csv                  # Sample tabular data (see note below)
 ├── data-raw/
-│   └── generate_sample_data.R     # Synthetic data generation
+│   └── generate_sample_data.R     # Defines synthetic_data for tests / experiments
 ├── examples/
 │   └── basic_usage.R              # Usage examples
 ├── tests/
@@ -18,37 +20,57 @@ The Threshold-Based Dynamic Ensemble (TBDE) is an AutoML architecture that "audi
 └── LICENSE                        # MIT License
 ```
 
+## Prerequisites
+
+- **R** (3.5+ recommended). No extra R packages are required for `build_coalition()` itself. The example script loads **dplyr** (install with `install.packages("dplyr")` if needed).
+
+Run scripts from the **repository root** so paths like `R/build_coalition.R` resolve correctly.
+
 ## 🚀 Quick Start
 
-### Basic Usage
+### Run the ensemble in R
 
 ```r
-# Source the model
+# From the project directory, or setwd() to it first
 source("R/build_coalition.R")
 
-# Create or load your data
+# Data must include a numeric target column named 'cost'
 data <- data.frame(
   cost = rnorm(100, mean = 50, sd = 15),
   feature1 = rnorm(100),
   feature2 = rnorm(100)
 )
 
-# Build the coalition
+# Returns a character vector of selected model names
 coalition <- build_coalition(data, threshold = 8.0)
+```
 
-# Results show selected models and their RMSE scores
+### Command-line examples
+
+From the project root:
+
+```bash
+# Full example workflows (threshold sweeps, train/test, etc.)
+Rscript examples/basic_usage.R
+
+# Test suite
+Rscript tests/test_ensemble.R
 ```
 
 ### Key Parameters
 
-- **data**: Data frame with required 'cost' column
+- **data**: Data frame with required `cost` column (target) and any feature columns
 - **threshold**: RMSE threshold for model inclusion (default: 5.0)
 - **k_folds**: Number of cross-validation folds (default: 3)
 - **seed**: Random seed for reproducibility (default: 123)
 
+### Data files
+
+- **`data/train.csv`**: Wine-quality style features in CSV form. The API expects the target under the name **`cost`**, not `quality`. Rename or derive a column, e.g. `cost <- quality`, before calling `build_coalition()`.
+
 ## 📊 Models Evaluated
 
-The ensemble evaluates the following 10 models:
+The coalition logic is written for ten named model slots (e.g. XGBoost, CatBoost, LightGBM). **In the current R implementation, each slot uses a small stub trainer/predictor** so the CV and threshold selection pipeline can run without installing heavy ML stacks. The list below describes the *intended* model types for a full production setup:
 
 1. **XGBoost** - Gradient boosting framework
 2. **CatBoost** - Categorical boosting
@@ -89,7 +111,7 @@ See `examples/basic_usage.R` for complete examples including:
 
 ## 🧪 Testing
 
-Run the full test suite:
+Run the full test suite from the repository root:
 
 ```bash
 Rscript tests/test_ensemble.R
@@ -104,11 +126,13 @@ Tests cover:
 
 ## 📊 Generate Sample Data
 
-Create synthetic training data:
+Create in-memory synthetic data used by the test script (defines `synthetic_data` when sourced):
 
 ```bash
-Rscript data-raw/generate_sample_data.R
+Rscript -e 'source("data-raw/generate_sample_data.R"); str(synthetic_data)'
 ```
+
+Or in R: `source("data-raw/generate_sample_data.R")`.
 
 ## 🔍 API Reference
 
