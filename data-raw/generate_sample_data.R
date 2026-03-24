@@ -2,7 +2,7 @@
 set.seed(42)
 n <- 200
 synthetic_data <- data.frame(
-  cost = rnorm(n, mean = 50, sd = 15),
+  quality = rnorm(n, mean = 50, sd = 15),
   feature1 = rnorm(n),
   feature2 = rnorm(n),
   feature3 = runif(n)

@@ -14,28 +14,28 @@ cat("========================================\n\n")
 cat("Test 1: Building coalition with threshold = 8.0\n")
 cat("-------------------------------------------\n")
 
-coalition_1 <- build_coalition(synthetic_data, threshold = 8.0)
+coalition_1 <- build_coalition(synthetic_data, selection = "threshold", threshold = 8.0)
 cat("Selected models:", paste(coalition_1, collapse = ", "), "\n\n")
 
 # Test 2: Strict Threshold (forces Top-3 selection)
 cat("Test 2: Strict threshold forcing Top-3 selection\n")
 cat("-------------------------------------------\n")
 
-coalition_2 <- build_coalition(synthetic_data, threshold = 1.0)
+coalition_2 <- build_coalition(synthetic_data, selection = "threshold", threshold = 1.0)
 cat("Selected models:", paste(coalition_2, collapse = ", "), "\n\n")
 
 # Test 3: Lenient Threshold
 cat("Test 3: Lenient threshold allowing more models\n")
 cat("-------------------------------------------\n")
 
-coalition_3 <- build_coalition(synthetic_data, threshold = 15.0)
+coalition_3 <- build_coalition(synthetic_data, selection = "threshold", threshold = 15.0)
 cat("Selected models:", paste(coalition_3, collapse = ", "), "\n\n")
 
 # Test 4: Different k-fold configurations
 cat("Test 4: Testing with different k-fold values\n")
 cat("-------------------------------------------\n")
 
-coalition_5fold <- build_coalition(synthetic_data, threshold = 8.0, k_folds = 5)
+coalition_5fold <- build_coalition(synthetic_data, selection = "threshold", threshold = 8.0, k_folds = 5)
 cat("5-fold selected:", paste(coalition_5fold, collapse = ", "), "\n\n")
 
 # Test 5: Evaluate coalition on test split
@@ -49,10 +49,10 @@ train_set <- synthetic_data[train_idx, ]
 test_set <- synthetic_data[-train_idx, ]
 
 # Build coalition on training data
-final_coalition <- build_coalition(train_set, threshold = 9.0)
+final_coalition <- build_coalition(train_set, selection = "threshold", threshold = 9.0)
 
 # Evaluate on test data
-mae <- evaluate_coalition(final_coalition, test_set)
+mae <- evaluate_coalition(final_coalition, train_set, test_set)
 cat("Mean Absolute Error on test set:", round(mae, 4), "\n\n")
 
 # Test 6: Input validation
@@ -60,7 +60,7 @@ cat("Test 6: Input validation\n")
 cat("-------------------------------------------\n")
 
 tryCatch({
-  bad_data <- data.frame(x = 1:10)  # Missing 'cost' column
+  bad_data <- data.frame(x = 1:10)  # Missing 'quality' column
   build_coalition(bad_data)
 }, error = function(e) {
   cat("Caught expected error:", conditionMessage(e), "\n\n")

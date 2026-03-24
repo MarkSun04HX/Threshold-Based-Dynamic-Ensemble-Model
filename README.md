@@ -1,182 +1,119 @@
 # Threshold-Based Dynamic Ensemble (TBDE) Model
 
-The Threshold-Based Dynamic Ensemble (TBDE) is an AutoML architecture that "auditions" multiple models (XGBoost, NN, etc.) via Cross-Validation. Only models beating a specific RMSE threshold join the voting coalition. If none pass, it picks the top 3. This ensures a robust, self-optimizing consensus that filters out weak predictors.
+The Threshold-Based Dynamic Ensemble (TBDE) “auditions” multiple named models via inner cross-validation. **By default** the **top 3** models with the lowest inner-CV RMSE form the coalition, and predictions are the **unweighted mean** of their outputs. You can switch to a **threshold** rule (`selection = "threshold"`).
 
-## 📋 Repository Structure
+**Recommended implementation: Python** (`tbde/`) — only **NumPy** and **pandas**; easy to extend and test. **R** sources remain available under `R/` for compatibility.
+
+## Repository structure
 
 ```
+├── tbde/                          # Python package (primary)
+│   ├── __init__.py
+│   └── coalition.py
 ├── R/
-│   └── build_coalition.R          # Core ensemble logic
+│   └── build_coalition.R          # R port of the same logic
 ├── data/
-│   └── train.csv                  # Sample tabular data (see note below)
+│   └── train.csv
 ├── data-raw/
-│   └── generate_sample_data.R     # Defines synthetic_data for tests / experiments
+│   └── generate_sample_data.R
 ├── examples/
-│   └── basic_usage.R              # Usage examples
+│   ├── basic_usage.py             # Python examples
+│   └── basic_usage.R
 ├── tests/
-│   └── test_ensemble.R            # Testing suite
-├── model.R                        # Legacy implementation
-├── README.md                      # This file
-└── LICENSE                        # MIT License
+│   ├── test_tbde.py               # Python (unittest)
+│   └── test_ensemble.R
+├── scripts/
+│   ├── cv_tbde.py                 # Outer CV (Python)
+│   └── cv_tbde.R
+├── pyproject.toml
+├── requirements.txt
+├── model.R                        # Older R script
+└── LICENSE
 ```
 
-## Prerequisites
+## Prerequisites (Python)
 
-- **R** (3.5+ recommended). No extra R packages are required for `build_coalition()` itself. The example script loads **dplyr** (install with `install.packages("dplyr")` if needed).
+- **Python 3.10+**
+- `pip install -e .` or `pip install -r requirements.txt` (numpy, pandas)
 
-Run scripts from the **repository root** so paths like `R/build_coalition.R` resolve correctly.
+Run commands from the **repository root** with `PYTHONPATH=.` or after `pip install -e .`.
 
-## 🚀 Quick Start
+## Quick start (Python)
 
-### Run the ensemble in R
+```python
+from pathlib import Path
+import pandas as pd
+from tbde.coalition import build_coalition, predict_tbde_ensemble
+
+train = pd.read_csv("data/train.csv", sep=";", check_names=False)
+result = build_coalition(train, top_k=3)   # CoalitionResult
+print(result.models)                       # e.g. ['LinearReg', 'XGBoost', ...]
+
+# Predict on a holdout frame (same columns as train, including target)
+# y_hat = predict_tbde_ensemble(train, test, result.models, target="quality")
+```
+
+```bash
+python examples/basic_usage.py
+python -m unittest tests.test_tbde -v
+python scripts/cv_tbde.py --folds 5 --top-k 3
+```
+
+### Python API
+
+- **`build_coalition(data, ...)`** → **`CoalitionResult`** with `.models: list[str]` and optional `.cv_rmse: dict[str, float]` when `return_rmse=True`.
+- **`predict_tbde_ensemble(train, test, coalition, target, weights=None)`** → row-wise mean (or weighted sum).
+- **`evaluate_coalition(coalition, train_data, test_data, target, weights=None)`** → MAE.
+
+Key parameters: **`selection`**: `"top_k"` | `"threshold"`, **`top_k`**, **`threshold`**, **`k_folds`**, **`target`** (default `"quality"`).
+
+## Quick start (R, optional)
 
 ```r
-# From the project directory, or setwd() to it first
 source("R/build_coalition.R")
-
-# Data must include a numeric target column named 'cost'
-data <- data.frame(
-  cost = rnorm(100, mean = 50, sd = 15),
-  feature1 = rnorm(100),
-  feature2 = rnorm(100)
-)
-
-# Returns a character vector of selected model names
-coalition <- build_coalition(data, threshold = 8.0)
+# build_coalition returns a character vector; use selection / top_k as in Python
+coalition <- build_coalition(train, top_k = 3)
 ```
 
-### Command-line examples
-
-From the project root:
-
 ```bash
-# Full example workflows (threshold sweeps, train/test, etc.)
 Rscript examples/basic_usage.R
-
-# Test suite
 Rscript tests/test_ensemble.R
+Rscript scripts/cv_tbde.R --folds 5
 ```
 
-### Key Parameters
+## Models (stub implementations)
 
-- **data**: Data frame with required `cost` column (target) and any feature columns
-- **threshold**: RMSE threshold for model inclusion (default: 5.0)
-- **k_folds**: Number of cross-validation folds (default: 3)
-- **seed**: Random seed for reproducibility (default: 123)
+Ten named slots are evaluated (XGBoost, CatBoost, …). **Each slot uses a small stub** (means/medians and an **OLS linear model** via NumPy `lstsq` in Python / `lm` in R) so the pipeline runs without heavy ML libraries. Swap in real estimators in `tbde/coalition.py` (or `R/build_coalition.R`) when you move to production.
 
-### Data files
+## How it works
 
-- **`data/train.csv`**: Wine-quality style features in CSV form. The API expects the target under the name **`cost`**, not `quality`. Rename or derive a column, e.g. `cost <- quality`, before calling `build_coalition()`.
+1. **Inner CV:** each model is scored by RMSE across folds.
+2. **Selection:** default **top_k** by lowest RMSE; optional **threshold** mode.
+3. **Prediction:** **unweighted mean** of coalition members’ predictions per row.
 
-## 📊 Models Evaluated
+## Cross-validation (outer folds)
 
-The coalition logic is written for ten named model slots (e.g. XGBoost, CatBoost, LightGBM). **In the current R implementation, each slot uses a small stub trainer/predictor** so the CV and threshold selection pipeline can run without installing heavy ML stacks. The list below describes the *intended* model types for a full production setup:
+- **Python:** `python scripts/cv_tbde.py` — reports exact-match and within-1 “accuracy”, RMSE, MAE, R².
+- **R:** `Rscript scripts/cv_tbde.R`
 
-1. **XGBoost** - Gradient boosting framework
-2. **CatBoost** - Categorical boosting
-3. **NeuralNet** - Neural network regressor
-4. **LinearReg** - Linear regression baseline
-5. **KNN** - K-nearest neighbors
-6. **RandomForest** - Random forest ensemble
-7. **ElasticNet** - Regularized linear regression
-8. **SVM** - Support vector machine
-9. **LightGBM** - Light gradient boosting
-10. **DecisionTree** - Single decision tree
-
-## 🎯 How It Works
-
-### Phase 1: Model Audition
-- Each model is trained via k-fold cross-validation
-- RMSE error is computed for each fold
-- Final RMSE for each model is the average across folds
-
-### Phase 2: Coalition Selection
-- Models with RMSE < threshold are selected
-- If no models meet threshold, top 3 performers are chosen
-- Ensures robust voting ensemble
-
-### Phase 3: Prediction
-- Selected models vote on predictions
-- Coalition output is more stable than individual models
-
-## 📈 Example Workflow
-
-See `examples/basic_usage.R` for complete examples including:
-
-- Simple dataset usage
-- Larger realistic datasets
-- Threshold sensitivity analysis
-- Train-test split evaluation
-- Custom cross-validation configurations
-
-## 🧪 Testing
-
-Run the full test suite from the repository root:
-
-```bash
-Rscript tests/test_ensemble.R
-```
-
-Tests cover:
-- Basic coalition building
-- Strict vs. lenient thresholds
-- Different k-fold configurations
-- Coalition evaluation
-- Input validation
-
-## 📊 Generate Sample Data
-
-Create in-memory synthetic data used by the test script (defines `synthetic_data` when sourced):
+## Sample / synthetic data
 
 ```bash
 Rscript -e 'source("data-raw/generate_sample_data.R"); str(synthetic_data)'
 ```
 
-Or in R: `source("data-raw/generate_sample_data.R")`.
+## Best practices
 
-## 🔍 API Reference
+- Prefer **within-1** accuracy for ordinal wine scores; exact match is strict for regression.
+- Tune **`top_k`** or **threshold** and outer CV folds for your sample size.
+- Validate on held-out data not used to build the coalition.
 
-### `build_coalition(data, threshold = 5.0, k_folds = 3, seed = 123)`
+## License
 
-Builds a threshold-based ensemble coalition.
+MIT License © 2026 Mark Sun — see `LICENSE`.
 
-**Returns:** Character vector of selected model names
+## Contributing
 
-### `evaluate_coalition(coalition, test_data)`
-
-Evaluates coalition performance on test data.
-
-**Returns:** Numeric mean absolute error
-
-## 💡 Best Practices
-
-1. **Choose appropriate threshold**: 
-   - Lower thresholds (5-10) for stricter selection
-   - Higher thresholds (15+) for more inclusive coalitions
-
-2. **Use cross-validation**: 
-   - Default 3-fold is fast; 5-fold recommended for robustness
-   - 10-fold for very small datasets
-
-3. **Scale your data**: 
-   - Consider normalizing features for better model performance
-
-4. **Validate results**: 
-   - Always test on held-out test set (not used during coalition building)
-
-## 📝 Legacy Code
-
-`model.R` contains the original implementation. The refactored version in `R/build_coalition.R` provides better structure, documentation, and extensibility.
-
-## 📄 License
-
-MIT License © 2026 Mark Sun
-
-See LICENSE file for details.
-
-## 🤝 Contributing
-
-Issues and pull requests welcome! Please ensure:
-- Code follows R style guide
-- Tests pass: `Rscript tests/test_ensemble.R`
-- Documentation is updated
+- Python: run `python -m unittest tests.test_tbde -v`.
+- R: run `Rscript tests/test_ensemble.R`.
+- Match behavior between languages when changing selection or stub logic.

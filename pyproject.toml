@@ -1,0 +1,24 @@
+[project]
+name = "tbde"
+version = "0.2.0"
+description = "Threshold-Based Dynamic Ensemble (TBDE)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.20",
+  "pandas>=1.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tbde*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

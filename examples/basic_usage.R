@@ -19,15 +19,15 @@ cat("---------\n\n")
 
 # Create a minimal dataset
 simple_data <- data.frame(
-  cost = c(10, 15, 12, 40, 11, 14, 13, 20, 18, 22, 25, 19),
+  quality = c(10, 15, 12, 40, 11, 14, 13, 20, 18, 22, 25, 19),
   feature_a = c(1, 2, 1.5, 8, 1.2, 2.1, 1.8, 3, 2.5, 3.2, 4, 3.1),
   feature_b = c(100, 105, 102, 200, 101, 106, 103, 150, 140, 155, 180, 145)
 )
 
 cat("Dataset shape:", nrow(simple_data), "rows,", ncol(simple_data), "columns\n\n")
 
-# Build coalition with default parameters
-coalition_simple <- build_coalition(simple_data, threshold = 10.0)
+# Default: top 3 models by inner-CV RMSE, mean prediction
+coalition_simple <- build_coalition(simple_data, top_k = 3)
 
 cat("Models in coalition:", paste(coalition_simple, collapse = ", "), "\n\n\n")
 
@@ -38,7 +38,7 @@ cat("---------\n\n")
 # Generate a more complex dataset
 set.seed(123)
 realistic_data <- data.frame(
-  cost = rnorm(150, mean = 500, sd = 100),
+  quality = rnorm(150, mean = 500, sd = 100),
   feature_1 = rnorm(150, mean = 50, sd = 10),
   feature_2 = rnorm(150, mean = 100, sd = 20),
   feature_3 = rbinom(150, size = 1, prob = 0.6),
@@ -47,14 +47,13 @@ realistic_data <- data.frame(
 )
 
 # Add some correlation
-realistic_data$cost <- realistic_data$cost + 0.3 * realistic_data$feature_1 +
+realistic_data$quality <- realistic_data$quality + 0.3 * realistic_data$feature_1 +
                        0.1 * realistic_data$feature_2
 
 cat("Dataset shape:", nrow(realistic_data), "rows,", ncol(realistic_data), "columns\n")
-cat("Cost range: [", min(realistic_data$cost), ", ", max(realistic_data$cost), "]\n\n")
+cat("Quality range: [", min(realistic_data$quality), ", ", max(realistic_data$quality), "]\n\n")
 
-# Build coalition with custom threshold
-coalition_realistic <- build_coalition(realistic_data, threshold = 25.0, k_folds = 5)
+coalition_realistic <- build_coalition(realistic_data, k_folds = 5, top_k = 3)
 
 cat("Selected coalition size:", length(coalition_realistic), "\n\n\n")
 
@@ -68,7 +67,7 @@ cat("Threshold | Coalition Size | Models\n")
 cat("-----------|----------------|--------\n")
 
 for (thresh in thresholds) {
-  coalition <- build_coalition(realistic_data, threshold = thresh)
+  coalition <- build_coalition(realistic_data, selection = "threshold", threshold = thresh)
   cat(sprintf("%8.1f  |      %2d        | %s\n",
               thresh, length(coalition), paste(coalition, collapse = ", ")))
 }
@@ -90,10 +89,10 @@ cat("Train set:", nrow(train_data), "samples\n")
 cat("Test set:", nrow(test_data), "samples\n\n")
 
 # Build coalition on training data only
-coalition_final <- build_coalition(train_data, threshold = 15.0)
+coalition_final <- build_coalition(train_data, top_k = 3)
 
 # Evaluate on test set
-mae <- evaluate_coalition(coalition_final, test_data)
+mae <- evaluate_coalition(coalition_final, train_data, test_data)
 
 cat("Test set MAE:", round(mae, 4), "\n\n\n")
 
@@ -104,7 +103,7 @@ cat("---------\n\n")
 cat("Testing different k-fold values:\n\n")
 
 for (k in c(3, 5, 10)) {
-  coalition <- build_coalition(realistic_data, threshold = 15.0, k_folds = k)
+  coalition <- build_coalition(realistic_data, selection = "threshold", threshold = 15.0, k_folds = k)
   cat("k =", k, "-> Coalition size:", length(coalition), "\n")
 }
 

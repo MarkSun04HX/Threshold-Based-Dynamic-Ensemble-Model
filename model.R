@@ -1,21 +1,24 @@
 # AutoML Coalition Script in R
 library(dplyr)
 
-build_coalition <- function(data, threshold = 5.0) {
-  
+build_coalition <- function(data, threshold = 5.0, target = "quality") {
+  if (!(target %in% colnames(data))) {
+    stop("data must contain target column '", target, "'", call. = FALSE)
+  }
+
   # 1. Define our "Lite" models as a list of functions
   # In a real scenario, you'd call 'xgboost()', 'randomForest()', etc.
   models <- list(
-    XGBoost = function(train) { return(mean(train$cost)) }, # Placeholder logic
-    CatBoost = function(train) { return(median(train$cost)) },
-    NeuralNet = function(train) { return(mean(train$cost) * 1.05) },
-    LinearReg = function(train) { lm(cost ~ ., data = train) },
-    KNN = function(train) { return(mean(tail(train$cost, 3))) },
-    RandomForest = function(train) { return(mean(train$cost)) },
-    ElasticNet = function(train) { return(mean(train$cost) * 0.98) },
-    SVM = function(train) { return(median(train$cost)) },
-    LightGBM = function(train) { return(mean(train$cost)) },
-    DecisionTree = function(train) { return(mean(train$cost)) }
+    XGBoost = function(train) { return(mean(train[[target]])) }, # Placeholder logic
+    CatBoost = function(train) { return(median(train[[target]])) },
+    NeuralNet = function(train) { return(mean(train[[target]]) * 1.05) },
+    LinearReg = function(train) { lm(as.formula(paste(target, "~ .")), data = train) },
+    KNN = function(train) { return(mean(tail(train[[target]], 3))) },
+    RandomForest = function(train) { return(mean(train[[target]])) },
+    ElasticNet = function(train) { return(mean(train[[target]]) * 0.98) },
+    SVM = function(train) { return(median(train[[target]])) },
+    LightGBM = function(train) { return(mean(train[[target]])) },
+    DecisionTree = function(train) { return(mean(train[[target]])) }
   )
   
   # 2. K-Fold Cross Validation (3-Fold)
@@ -41,7 +44,7 @@ build_coalition <- function(data, threshold = 5.0) {
         actual_preds <- predict(pred, test_data)
       }
       
-      errors <- c(errors, (test_data$cost - actual_preds)^2)
+      errors <- c(errors, (test_data[[target]] - actual_preds)^2)
     }
     results$RMSE[results$Model == m_name] <- sqrt(mean(errors))
   }
@@ -61,5 +64,5 @@ build_coalition <- function(data, threshold = 5.0) {
 }
 
 # --- Example Usage ---
-# dummy_data <- data.frame(cost = c(10, 15, 12, 40, 11, 14, 13))
+# dummy_data <- data.frame(quality = c(10, 15, 12, 40, 11, 14, 13))
 # my_coalition <- build_coalition(dummy_data, threshold = 10)
