@@ -1,23 +1,28 @@
 [project]
-name = "tbde"
-version = "0.2.0"
-description = "Threshold-Based Dynamic Ensemble (TBDE)"
+name = "threshold-ensemble"
+version = "1.0.0"
+description = "TBDE + RMSE-gated dynamic ensemble (RGDE) for regression"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.20",
   "pandas>=1.5",
+  "scikit-learn>=1.2",
+  "scipy>=1.8",
 ]
 
 [project.optional-dependencies]
+xgboost = ["xgboost>=2.0"]
+plots = ["matplotlib>=3.7"]
 dev = ["pytest>=7.0"]
+all = ["xgboost>=2.0", "matplotlib>=3.7", "pytest>=7.0"]
 
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["tbde*"]
+include = ["tbde*", "rgde*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

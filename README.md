@@ -1,119 +1,140 @@
-# Threshold-Based Dynamic Ensemble (TBDE) Model
+# Threshold-Based Dynamic Ensemble & RMSE-Gated Ensemble
 
-The Threshold-Based Dynamic Ensemble (TBDE) “auditions” multiple named models via inner cross-validation. **By default** the **top 3** models with the lowest inner-CV RMSE form the coalition, and predictions are the **unweighted mean** of their outputs. You can switch to a **threshold** rule (`selection = "threshold"`).
+Production-quality **Python** stack for regression ensembles, plus legacy **TBDE** (top‑k / threshold coalitions) and **R** scripts.
 
-**Recommended implementation: Python** (`tbde/`) — only **NumPy** and **pandas**; easy to extend and test. **R** sources remain available under `R/` for compatibility.
+---
 
-## Repository structure
+## RMSE-Gated Dynamic Ensemble (`rgde/`) — recommended
 
-```
-├── tbde/                          # Python package (primary)
-│   ├── __init__.py
-│   └── coalition.py
-├── R/
-│   └── build_coalition.R          # R port of the same logic
-├── data/
-│   └── train.csv
-├── data-raw/
-│   └── generate_sample_data.R
-├── examples/
-│   ├── basic_usage.py             # Python examples
-│   └── basic_usage.R
-├── tests/
-│   ├── test_tbde.py               # Python (unittest)
-│   └── test_ensemble.R
-├── scripts/
-│   ├── cv_tbde.py                 # Outer CV (Python)
-│   └── cv_tbde.R
-├── pyproject.toml
-├── requirements.txt
-├── model.R                        # Older R script
-└── LICENSE
-```
+A **stacking-inspired** system with **inverse-RMSE weights** and **disagreement gating** (mixture-of-experts style).
 
-## Prerequisites (Python)
+### Behavior
 
-- **Python 3.10+**
-- `pip install -e .` or `pip install -r requirements.txt` (numpy, pandas)
+1. **10-fold CV** (`KFold(shuffle=True, random_state=42)`): for each base learner, **out-of-fold predictions** and **CV RMSE** (no leakage between train/val folds).
+2. **Weights:** \(w_i \propto 1/\mathrm{RMSE}_i\), normalized to sum to 1.
+3. **Disagreement** per row: standard deviation of predictions across models (on OOF or test).
+4. **Gating** with threshold **τ** (tunable):
+   - if **disagreement < τ** → **weighted average** of all models;
+   - else → prediction from the **best** model (lowest CV RMSE).
 
-Run commands from the **repository root** with `PYTHONPATH=.` or after `pip install -e .`.
+### Base learners (sklearn `Pipeline` where appropriate)
 
-## Quick start (Python)
+| Model | Implementation |
+|--------|------------------|
+| Linear regression | `StandardScaler` + `LinearRegression` |
+| Ridge | `StandardScaler` + `Ridge` |
+| Elastic Net | `StandardScaler` + `ElasticNet` |
+| Decision tree | `DecisionTreeRegressor` |
+| Random forest | `RandomForestRegressor` (optional) |
+| XGBoost | `XGBRegressor` in `Pipeline` if `pip install xgboost` |
 
-```python
-from pathlib import Path
-import pandas as pd
-from tbde.coalition import build_coalition, predict_tbde_ensemble
+### Modular API
 
-train = pd.read_csv("data/train.csv", sep=";", check_names=False)
-result = build_coalition(train, top_k=3)   # CoalitionResult
-print(result.models)                       # e.g. ['LinearReg', 'XGBoost', ...]
+| Module | Role |
+|--------|------|
+| `rgde.training.train_model` | Clone + fit on full data |
+| `rgde.cv.cross_validate_model` | OOF preds + CV RMSE for one estimator |
+| `rgde.cv.cross_validate_all_models` | OOF matrix + RMSE dict |
+| `rgde.ensemble` | `rmse_dict_to_weights`, `prediction_disagreement`, `compute_gated_predictions`, `compute_ensemble` / `compute_ensemble_oof` |
+| `rgde.evaluation.evaluate_rmse` | RMSE |
+| `rgde.pipeline.RMSEGatedDynamicEnsemble` | End-to-end `fit` / `predict` |
+| `rgde.tuning.tune_tau_grid` | Optional **τ** grid search on OOF |
+| `rgde.plots` | Optional RMSE bar chart & disagreement histogram (`matplotlib`) |
 
-# Predict on a holdout frame (same columns as train, including target)
-# y_hat = predict_tbde_ensemble(train, test, result.models, target="quality")
-```
+### `fit` output (`GatedEnsembleReport`)
+
+- CV RMSE per model  
+- Best model name and best CV RMSE  
+- Gated **ensemble CV RMSE** (on OOF)  
+- **Improvement %** vs best single model  
+- Normalized weights, τ, OOF prediction matrix, gated OOF vector, disagreement  
+
+### Install
 
 ```bash
-python examples/basic_usage.py
+pip install -e .
+# optional: pip install xgboost matplotlib
+```
+
+### Quick start
+
+```python
+import pandas as pd
+from rgde import RMSEGatedDynamicEnsemble
+
+df = pd.read_csv("data/train.csv", sep=";", check_names=False)
+y = df["quality"]
+X = df.drop(columns=["quality"])
+
+model = RMSEGatedDynamicEnsemble(tau=0.15, tune_tau=False)
+model.fit(X, y)
+report = model.get_report()
+print(report.to_dict())
+
+y_test_hat = model.predict(X_test)  # same feature columns as X
+```
+
+### CLI & plots
+
+```bash
+PYTHONPATH=. python scripts/fit_rgde.py
+PYTHONPATH=. python scripts/fit_rgde.py --tune-tau --plot   # needs matplotlib
+```
+
+### Tests
+
+```bash
+PYTHONPATH=. python -m unittest tests.test_rgde -v
+```
+
+### Repository layout (Python)
+
+```
+rgde/
+  __init__.py
+  config.py          # RANDOM_STATE=42, N_CV_FOLDS=10
+  estimators.py
+  training.py
+  cv.py
+  ensemble.py
+  evaluation.py
+  pipeline.py
+  tuning.py
+  plots.py
+scripts/fit_rgde.py
+tests/test_rgde.py
+```
+
+**Note:** Tuning τ on the same OOF matrix used for weights is convenient but can be mildly optimistic; for publications use a hold-out or nested CV.
+
+---
+
+## Legacy: TBDE (`tbde/`)
+
+Top‑**k** or **threshold** coalitions with **stub** models (NumPy OLS + constants). See earlier sections in git history or `tbde/coalition.py`.
+
+```bash
+PYTHONPATH=. python examples/basic_usage.py
+PYTHONPATH=. python scripts/cv_tbde.py
 python -m unittest tests.test_tbde -v
-python scripts/cv_tbde.py --folds 5 --top-k 3
 ```
 
-### Python API
+---
 
-- **`build_coalition(data, ...)`** → **`CoalitionResult`** with `.models: list[str]` and optional `.cv_rmse: dict[str, float]` when `return_rmse=True`.
-- **`predict_tbde_ensemble(train, test, coalition, target, weights=None)`** → row-wise mean (or weighted sum).
-- **`evaluate_coalition(coalition, train_data, test_data, target, weights=None)`** → MAE.
-
-Key parameters: **`selection`**: `"top_k"` | `"threshold"`, **`top_k`**, **`threshold`**, **`k_folds`**, **`target`** (default `"quality"`).
-
-## Quick start (R, optional)
-
-```r
-source("R/build_coalition.R")
-# build_coalition returns a character vector; use selection / top_k as in Python
-coalition <- build_coalition(train, top_k = 3)
-```
+## R (optional)
 
 ```bash
 Rscript examples/basic_usage.R
 Rscript tests/test_ensemble.R
-Rscript scripts/cv_tbde.R --folds 5
 ```
 
-## Models (stub implementations)
+---
 
-Ten named slots are evaluated (XGBoost, CatBoost, …). **Each slot uses a small stub** (means/medians and an **OLS linear model** via NumPy `lstsq` in Python / `lm` in R) so the pipeline runs without heavy ML libraries. Swap in real estimators in `tbde/coalition.py` (or `R/build_coalition.R`) when you move to production.
+## Contributing
 
-## How it works
-
-1. **Inner CV:** each model is scored by RMSE across folds.
-2. **Selection:** default **top_k** by lowest RMSE; optional **threshold** mode.
-3. **Prediction:** **unweighted mean** of coalition members’ predictions per row.
-
-## Cross-validation (outer folds)
-
-- **Python:** `python scripts/cv_tbde.py` — reports exact-match and within-1 “accuracy”, RMSE, MAE, R².
-- **R:** `Rscript scripts/cv_tbde.R`
-
-## Sample / synthetic data
-
-```bash
-Rscript -e 'source("data-raw/generate_sample_data.R"); str(synthetic_data)'
-```
-
-## Best practices
-
-- Prefer **within-1** accuracy for ordinal wine scores; exact match is strict for regression.
-- Tune **`top_k`** or **threshold** and outer CV folds for your sample size.
-- Validate on held-out data not used to build the coalition.
+- `PYTHONPATH=. python -m unittest tests.test_rgde -v`
+- `PYTHONPATH=. python -m unittest tests.test_tbde -v` (legacy TBDE)
 
 ## License
 
 MIT License © 2026 Mark Sun — see `LICENSE`.
-
-## Contributing
-
-- Python: run `python -m unittest tests.test_tbde -v`.
-- R: run `Rscript tests/test_ensemble.R`.
-- Match behavior between languages when changing selection or stub logic.
